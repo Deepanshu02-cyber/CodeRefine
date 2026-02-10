@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CodeRefine AI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+  <h1 class="title">🧠 CodeRefine AI</h1>
+  <p class="subtitle">Paste your code and get AI-powered review</p>
+
+  <textarea id="code" placeholder="Paste your code here...">print(hello world)</textarea>
+
+  <!-- Pro prompt box (optional) -->
+  <textarea id="proPrompt" class="probox"
+    placeholder="(Pro) Optional: Tell what changes you want (optimize, refactor, add comments, fix bugs, improve readability, etc.)"></textarea>
+
+  <button onclick="reviewCode()">Review Code</button>
+
+  <!-- Result blocks -->
+  <div id="result" class="resultWrap"></div>
+</div>
+
+<script>
+function escapeHtml(str) {
+  return str
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderBlock(title, icon, type, bodyHtml) {
+  return `
+    <div class="card ${type}">
+      <div class="cardHeader">
+        <span class="icon">${icon}</span>
+        <span class="cardTitle">${title}</span>
+      </div>
+      <div class="cardBody">${bodyHtml}</div>
+    </div>
+  `;
+}
+
+function renderList(items) {
+  if (!items || !items.length) return `<div class="muted">None</div>`;
+  return `<ul>${items.map(x => `<li>${escapeHtml(String(x))}</li>`).join("")}</ul>`;
+}
+
+function renderCodeBlock(code) {
+  return `<pre class="codeBlock"><code>${escapeHtml(code || "")}</code></pre>`;
+}
+
+async function reviewCode() {
+  const code = document.getElementById("code").value;
+  const pro_prompt = document.getElementById("proPrompt").value;
+  const resultWrap = document.getElementById("result");
+
+  resultWrap.innerHTML = renderBlock("Review in progress", "⏳", "info",
+    `<div class="muted">Please wait…</div>`);
+
+  try {
+    const response = await fetch("/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, pro_prompt })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      const err = data.error || "Unknown error";
+      resultWrap.innerHTML = renderBlock("Error", "❌", "danger",
+        `<div>${escapeHtml(err)}</div>
+         ${data.hint ? `<div class="muted" style="margin-top:10px;">${escapeHtml(data.hint)}</div>` : ""}`
+      );
+      return;
+    }
+
+    const r = data.review;
+
+    // ✅ Render clean, colorful, easy blocks
+    let html = "";
+    html += renderBlock("Code Quality", "✅", "success", `<div>${escapeHtml(r.quality)}</div>`);
+    html += renderBlock("Issues / Errors", "⚠️", "warning", renderList(r.issues));
+    html += renderBlock("Suggestions", "💡", "info", renderList(r.suggestions));
+    html += renderBlock("Corrected / Improved Code", "🧩", "code", renderCodeBlock(r.corrected_code));
+    html += renderBlock("Final Verdict", "🎯", "verdict", `<div>${escapeHtml(r.verdict)}</div>`);
+
+    // tiny footer
+    html += `<div class="footerNote">Model used: <b>${escapeHtml(data.model || "")}</b></div>`;
+
+    resultWrap.innerHTML = html;
+
+  } catch (e) {
+    resultWrap.innerHTML = renderBlock("Error", "❌", "danger",
+      `<div>${escapeHtml(String(e))}</div>`
+    );
+  }
+}
+</script>
+
+</body>
+</html>
